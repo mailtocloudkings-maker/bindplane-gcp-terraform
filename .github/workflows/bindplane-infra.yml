@@ -1,0 +1,49 @@
+name: BindPlane Infra Setup
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_id:
+        required: true
+      region:
+        default: us-central1
+      zone:
+        default: us-central1-a
+      vm_name:
+        required: true
+      db_user:
+        required: true
+      db_pass:
+        required: true
+      bucket_name:
+        required: true
+
+jobs:
+  infra:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v3
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: GCP Auth
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GCP_SA_KEY }}
+        run: |
+          echo "$GOOGLE_CREDENTIALS" > key.json
+          gcloud auth activate-service-account --key-file=key.json
+          gcloud config set project ${{ github.event.inputs.project_id }}
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Apply Infra
+        run: |
+          terraform apply -auto-approve \
+          -var="project_id=${{ github.event.inputs.project_id }}" \
+          -var="region=${{ github.event.inputs.region }}" \
+          -var="zone=${{ github.event.inputs.zone }}" \
+          -var="vm_name=${{ github.event.inputs.vm_name }}" \
+          -var="db_user=${{ github.event.inputs.db_user }}" \
+          -var="db_pass=${{ github.event.inputs.db_pass }}" \
+          -var="bucket_name=${{ github.event.inputs.bucket_name }}"
