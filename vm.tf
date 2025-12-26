@@ -40,7 +40,13 @@ sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE bindplane TO ${var.db
 sudo -u postgres psql -c "ALTER SCHEMA public OWNER TO ${var.db_user};"
 
 curl -fsSlL https://storage.googleapis.com/bindplane-op-releases/bindplane/latest/install-linux.sh -o install-linux.sh
-bash install-linux.sh --version 1.96.7 --init
+
+bash install-linux.sh --version 1.96.7 --init \
+  --accept-license \
+  --no-prompt \
+  --admin-user ${var.bp_admin_user} \
+  --admin-password ${var.bp_admin_pass}
+
 rm install-linux.sh
 
 sudo systemctl enable bindplane
