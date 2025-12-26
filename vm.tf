@@ -27,9 +27,6 @@ resource "google_compute_instance" "bindplane_vm" {
     access_config {}
   }
 
-  metadata = {
-    ssh-keys = "ubuntu:${file("~/.ssh/id_rsa.pub")}"
-  }
 }
 
 resource "null_resource" "vm_setup" {
