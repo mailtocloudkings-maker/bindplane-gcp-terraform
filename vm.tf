@@ -1,3 +1,15 @@
+resource "google_compute_firewall" "bindplane_ui" {
+  name    = "${var.vm_name}-bindplane-ui"
+  network = "default"
+
+  allow {
+    protocol = "tcp"
+    ports    = ["3001"]
+  }
+
+  source_ranges = ["0.0.0.0/0"]
+}
+
 resource "google_compute_instance" "bindplane_vm" {
   name         = var.vm_name
   zone         = var.zone
