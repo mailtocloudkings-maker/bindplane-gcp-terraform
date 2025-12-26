@@ -55,6 +55,8 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.7
       - name: Terraform Init
         run: terraform init
 
@@ -66,8 +68,11 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.7
       - name: Apply Terraform
         run: |
+          set -x
           terraform apply -auto-approve \
             -var="project_id=${{ github.event.inputs.project_id }}" \
             -var="region=${{ github.event.inputs.region }}" \
