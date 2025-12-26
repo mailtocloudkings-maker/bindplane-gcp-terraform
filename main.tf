@@ -12,18 +12,3 @@ terraform {
     }
   }
 }
-
-# Configure the Google Cloud provider
-provider "google" {
-  project = var.project_id
-  region  = var.region
-  zone    = var.zone
-}
-
-# Optional: set up backend if needed
-# terraform {
-#   backend "gcs" {
-#     bucket = var.backend_bucket
-#     prefix = "terraform/state"
-#   }
-# }
