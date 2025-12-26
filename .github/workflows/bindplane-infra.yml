@@ -15,6 +15,12 @@ on:
         required: true
       db_pass:
         required: true
+      bp_admin_user:
+        description: "BindPlane Admin Username"
+        required: true
+      bp_admin_pass:
+        description: "BindPlane Admin Password"
+        required: true
       bucket_name:
         required: true
 
