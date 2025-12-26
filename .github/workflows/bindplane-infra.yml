@@ -4,41 +4,33 @@ on:
   workflow_dispatch:
     inputs:
       project_id:
-        description: "GCP Project ID"
         required: true
       region:
-        description: "GCP Region"
         default: us-central1
       zone:
-        description: "GCP Zone"
         default: us-central1-a
       vm_name:
-        description: "VM Name"
         required: true
       db_user:
-        description: "PostgreSQL DB User"
         required: true
       db_pass:
-        description: "PostgreSQL DB Password"
         required: true
       bp_admin_user:
-        description: "BindPlane Admin Username"
         required: true
       bp_admin_pass:
-        description: "BindPlane Admin Password"
         required: true
       bucket_name:
-        description: "GCS Bucket Name"
         required: true
 
 jobs:
-
-  gcp-auth:
-    name: GCP Authentication
+  terraform:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.5
 
       - name: Authenticate to GCP
         env:
@@ -48,31 +40,10 @@ jobs:
           gcloud auth activate-service-account --key-file=key.json
           gcloud config set project ${{ github.event.inputs.project_id }}
 
-  terraform-init:
-    name: Terraform Init
-    runs-on: ubuntu-latest
-    needs: gcp-auth
-    steps:
-      - uses: actions/checkout@v3
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.6.5
-      - name: Terraform Init
-        run: terraform init
-
-  terraform-apply:
-    name: Terraform Apply
-    runs-on: ubuntu-latest
-    needs: terraform-init
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v3
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.6.5
-      - name: Apply Terraform
+      - name: Terraform Init and Apply
         run: |
           set -x
+          terraform init
           terraform apply -auto-approve \
             -var="project_id=${{ github.event.inputs.project_id }}" \
             -var="region=${{ github.event.inputs.region }}" \
