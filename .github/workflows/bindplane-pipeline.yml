@@ -1,0 +1,28 @@
+name: BindPlane Pipeline Setup
+
+on:
+  workflow_dispatch:
+    inputs:
+      bindplane_token:
+        required: true
+      vm_ip:
+        required: true
+      bucket_name:
+        required: true
+      pipeline_name:
+        required: true
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create Pipeline
+        run: |
+          curl -X POST http://${{ github.event.inputs.vm_ip }}:3001/api/v1/pipelines \
+          -H "Authorization: Bearer ${{ github.event.inputs.bindplane_token }}" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "name":"${{ github.event.inputs.pipeline_name }}",
+            "source":{"type":"google_cloud_storage","config":{"bucket":"${{ github.event.inputs.bucket_name }}"}},
+            "destination":{"type":"google_cloud_observability"}
+          }'
