@@ -8,5 +8,5 @@ variable "db_pass" {}
 variable "bp_admin_user" {}
 variable "bp_admin_pass" {}
 variable "bucket_name" {}
-variable "pipeline_name" {}
-variable "bindplane_token" {}
+
+
