@@ -1,4 +1,3 @@
-
 # Generate SSH key for VM access
 resource "tls_private_key" "vm_key" {
   algorithm = "RSA"
@@ -65,31 +64,47 @@ resource "null_resource" "vm_setup" {
     host        = google_compute_instance.bindplane_vm.network_interface[0].access_config[0].nat_ip
     user        = "ubuntu"
     private_key = tls_private_key.vm_key.private_key_pem
-    timeout     = "10m"
+    timeout     = "20m"
   }
 
   provisioner "remote-exec" {
     inline = [
       "set -x",
+
+      # Update system packages
       "echo 'Updating system packages...'",
       "sudo apt update && sudo apt upgrade -y",
 
-      "echo 'Installing PostgreSQL...'",
-      "sudo apt install -y postgresql postgresql-contrib curl",
-      "sudo systemctl start postgresql && sudo systemctl enable postgresql",
+      # Install PostgreSQL 14 (works on Ubuntu 22.04)
+      "echo 'Installing PostgreSQL 14 and required tools...'",
+      "sudo apt install -y postgresql-14 postgresql-client-14 curl",
 
+      # Start PostgreSQL
+      "echo 'Starting PostgreSQL service...'",
+      "sudo systemctl enable postgresql",
+      "sudo systemctl start postgresql",
+
+      # Create database and user
       "echo 'Creating database and user...'",
-      "sudo -u postgres psql -c \"CREATE DATABASE bindplane;\"",
-      "sudo -u postgres psql -c \"CREATE USER ${var.db_user} WITH PASSWORD '${var.db_pass}';\"",
-      "sudo -u postgres psql -c \"GRANT ALL PRIVILEGES ON DATABASE bindplane TO ${var.db_user};\"",
-      "sudo -u postgres psql -c \"ALTER SCHEMA public OWNER TO ${var.db_user};\"",
+      "sudo -i -u postgres psql <<EOF",
+      "CREATE DATABASE bindplane;",
+      "CREATE USER ${var.db_user} WITH PASSWORD '${var.db_pass}';",
+      "GRANT ALL PRIVILEGES ON DATABASE bindplane TO ${var.db_user};",
+      "\\c bindplane",
+      "GRANT USAGE, CREATE ON SCHEMA public TO ${var.db_user};",
+      "ALTER SCHEMA public OWNER TO ${var.db_user};",
+      "\\q",
+      "EOF",
 
+      # BindPlane Server install
       "echo 'Installing BindPlane Server...'",
       "curl -fsSL https://storage.googleapis.com/bindplane-op-releases/bindplane/latest/install-linux.sh -o install-linux.sh",
-      "bash install-linux.sh --version 1.96.7 --init --accept-license --no-prompt --admin-user ${var.bp_admin_user} --admin-password ${var.bp_admin_pass}",
+      "bash install-linux.sh --version 1.96.7 --init",
       "rm install-linux.sh",
-      "sudo systemctl enable bindplane && sudo systemctl start bindplane",
+      "sudo systemctl enable bindplane",
+      "sudo systemctl start bindplane",
 
+      # BindPlane Agent install
       "echo 'Installing BindPlane Agent...'",
       "curl -fsSL https://packages.bindplane.com/agent/install.sh | sudo bash",
       "sudo systemctl start bindplane-agent",
