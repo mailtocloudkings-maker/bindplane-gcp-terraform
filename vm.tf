@@ -8,9 +8,6 @@ resource "google_compute_firewall" "bindplane_ui" {
   }
 
   source_ranges = ["0.0.0.0/0"]
-  lifecycle {
-    ignore_changes = [name] # Skip if already exists
-  }
 }
 
 resource "google_compute_instance" "bindplane_vm" {
@@ -29,10 +26,12 @@ resource "google_compute_instance" "bindplane_vm" {
     network = "default"
     access_config {}
   }
+}
 
-  lifecycle {
-    ignore_changes = [name] # Skip if already exists
-  }
+# Generate SSH key dynamically for CI/CD
+resource "tls_private_key" "vm_key" {
+  algorithm = "RSA"
+  rsa_bits  = 2048
 }
 
 resource "null_resource" "vm_setup" {
@@ -42,8 +41,7 @@ resource "null_resource" "vm_setup" {
     type        = "ssh"
     host        = google_compute_instance.bindplane_vm.network_interface[0].access_config[0].nat_ip
     user        = "ubuntu"
-    # Using GitHub Action generated key or secret
-    private_key = file("gcp-key-ssh") 
+    private_key = tls_private_key.vm_key.private_key_pem
   }
 
   provisioner "remote-exec" {
@@ -54,13 +52,18 @@ resource "null_resource" "vm_setup" {
 
       "echo 'Installing PostgreSQL...'",
       "sudo apt install -y postgresql postgresql-contrib curl",
-      "sudo systemctl start postgresql && sudo systemctl enable postgresql",
 
-      "echo 'Creating database and user...'",
-      "sudo -u postgres psql -c \"CREATE DATABASE bindplane;\" || true",
-      "sudo -u postgres psql -c \"CREATE USER ${var.db_user} WITH PASSWORD '${var.db_pass}';\" || true",
-      "sudo -u postgres psql -c \"GRANT ALL PRIVILEGES ON DATABASE bindplane TO ${var.db_user};\" || true",
-      "sudo -u postgres psql -c \"ALTER SCHEMA public OWNER TO ${var.db_user};\" || true",
+      "echo 'Starting PostgreSQL service...'",
+      "sudo systemctl start postgresql",
+      "sudo systemctl enable postgresql",
+
+      "echo 'Switching to postgres user to create DB and user...'",
+      "sudo -i -u postgres psql -c \"CREATE DATABASE bindplane;\"",
+      "sudo -i -u postgres psql -c \"CREATE USER ${var.db_user} WITH PASSWORD '${var.db_pass}';\"",
+      "sudo -i -u postgres psql -c \"GRANT ALL PRIVILEGES ON DATABASE bindplane TO ${var.db_user};\"",
+      "sudo -i -u postgres psql -c \"ALTER SCHEMA public OWNER TO ${var.db_user};\"",
+
+      "echo 'PostgreSQL installation and user setup complete'",
 
       "echo 'Installing BindPlane Server...'",
       "curl -fsSL https://storage.googleapis.com/bindplane-op-releases/bindplane/latest/install-linux.sh -o install-linux.sh",
