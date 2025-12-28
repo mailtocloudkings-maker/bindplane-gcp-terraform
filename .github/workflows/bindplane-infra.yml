@@ -55,11 +55,48 @@ jobs:
 
       - name: Terraform Init
         run: terraform init -reconfigure
+
+      # 🔥 CRITICAL: Import existing infra safely
       - name: Terraform Import Existing Resources
         run: |
-          terraform import google_compute_instance.bindplane_vm projects/${{ github.event.inputs.project_id }}/zones/${{ github.event.inputs.zone }}/instances/${{ github.event.inputs.vm_name }} || true
-          terraform import google_compute_firewall.bindplane_ui ${{ github.event.inputs.vm_name }}-bindplane-ui || true
-          terraform import google_storage_bucket.bindplane_logs ${{ github.event.inputs.bucket_name }} || true
+          terraform import \
+            -var="project_id=${{ github.event.inputs.project_id }}" \
+            -var="region=${{ github.event.inputs.region }}" \
+            -var="zone=${{ github.event.inputs.zone }}" \
+            -var="vm_name=${{ github.event.inputs.vm_name }}" \
+            -var="db_user=${{ github.event.inputs.db_user }}" \
+            -var="db_pass=${{ github.event.inputs.db_pass }}" \
+            -var="bp_admin_user=${{ github.event.inputs.bp_admin_user }}" \
+            -var="bp_admin_pass=${{ github.event.inputs.bp_admin_pass }}" \
+            -var="bucket_name=${{ github.event.inputs.bucket_name }}" \
+            -var="credentials_file=$(pwd)/gcp-key.json" \
+            google_compute_instance.bindplane_vm projects/${{ github.event.inputs.project_id }}/zones/${{ github.event.inputs.zone }}/instances/${{ github.event.inputs.vm_name }} || true
+
+          terraform import \
+            -var="project_id=${{ github.event.inputs.project_id }}" \
+            -var="region=${{ github.event.inputs.region }}" \
+            -var="zone=${{ github.event.inputs.zone }}" \
+            -var="vm_name=${{ github.event.inputs.vm_name }}" \
+            -var="db_user=${{ github.event.inputs.db_user }}" \
+            -var="db_pass=${{ github.event.inputs.db_pass }}" \
+            -var="bp_admin_user=${{ github.event.inputs.bp_admin_user }}" \
+            -var="bp_admin_pass=${{ github.event.inputs.bp_admin_pass }}" \
+            -var="bucket_name=${{ github.event.inputs.bucket_name }}" \
+            -var="credentials_file=$(pwd)/gcp-key.json" \
+            google_compute_firewall.bindplane_ui ${{ github.event.inputs.vm_name }}-bindplane-ui || true
+
+          terraform import \
+            -var="project_id=${{ github.event.inputs.project_id }}" \
+            -var="region=${{ github.event.inputs.region }}" \
+            -var="zone=${{ github.event.inputs.zone }}" \
+            -var="vm_name=${{ github.event.inputs.vm_name }}" \
+            -var="db_user=${{ github.event.inputs.db_user }}" \
+            -var="db_pass=${{ github.event.inputs.db_pass }}" \
+            -var="bp_admin_user=${{ github.event.inputs.bp_admin_user }}" \
+            -var="bp_admin_pass=${{ github.event.inputs.bp_admin_pass }}" \
+            -var="bucket_name=${{ github.event.inputs.bucket_name }}" \
+            -var="credentials_file=$(pwd)/gcp-key.json" \
+            google_storage_bucket.bindplane_logs ${{ github.event.inputs.bucket_name }} || true
 
       - name: Terraform Apply
         run: |
