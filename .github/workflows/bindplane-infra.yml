@@ -1,27 +1,71 @@
-- name: Setup Terraform
-  uses: hashicorp/setup-terraform@v3
-  with:
-    terraform_version: 1.6.5
+name: BindPlane Full Infra Setup
 
-- name: Write GCP credentials file
-  env:
-    GCP_KEY: ${{ secrets.GCP_SA_KEY }}
-  run: |
-    echo "$GCP_KEY" > gcp-key.json
+on:
+  workflow_dispatch:
+    inputs:
+      project_id:
+        description: "GCP Project ID"
+        required: true
+      region:
+        description: "GCP Region"
+        default: us-central1
+      zone:
+        description: "GCP Zone"
+        default: us-central1-a
+      vm_name:
+        description: "BindPlane VM Name"
+        required: true
+      db_user:
+        description: "PostgreSQL Username"
+        required: true
+      db_pass:
+        description: "PostgreSQL Password"
+        required: true
+      bp_admin_user:
+        description: "BindPlane Admin Username"
+        required: true
+      bp_admin_pass:
+        description: "BindPlane Admin Password"
+        required: true
+      bucket_name:
+        description: "GCS Bucket Name"
+        required: true
 
-- name: Terraform Init
-  run: terraform init
+jobs:
+  terraform:
+    name: Deploy BindPlane Infrastructure
+    runs-on: ubuntu-latest
 
-- name: Terraform Apply
-  run: |
-    terraform apply -auto-approve \
-      -var="project_id=${{ github.event.inputs.project_id }}" \
-      -var="region=${{ github.event.inputs.region }}" \
-      -var="zone=${{ github.event.inputs.zone }}" \
-      -var="vm_name=${{ github.event.inputs.vm_name }}" \
-      -var="db_user=${{ github.event.inputs.db_user }}" \
-      -var="db_pass=${{ github.event.inputs.db_pass }}" \
-      -var="bp_admin_user=${{ github.event.inputs.bp_admin_user }}" \
-      -var="bp_admin_pass=${{ github.event.inputs.bp_admin_pass }}" \
-      -var="bucket_name=${{ github.event.inputs.bucket_name }}" \
-      -var="credentials_file=gcp-key.json"
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.5
+
+      - name: Write GCP Service Account Key
+        env:
+          GCP_KEY: ${{ secrets.GCP_SA_KEY }}
+        run: |
+          echo "$GCP_KEY" > gcp-key.json
+          chmod 600 gcp-key.json
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/gcp-key.json" >> $GITHUB_ENV
+
+      - name: Terraform Init
+        run: terraform init -reconfigure
+
+      - name: Terraform Apply
+        run: |
+          terraform apply -auto-approve \
+            -var="project_id=${{ github.event.inputs.project_id }}" \
+            -var="region=${{ github.event.inputs.region }}" \
+            -var="zone=${{ github.event.inputs.zone }}" \
+            -var="vm_name=${{ github.event.inputs.vm_name }}" \
+            -var="db_user=${{ github.event.inputs.db_user }}" \
+            -var="db_pass=${{ github.event.inputs.db_pass }}" \
+            -var="bp_admin_user=${{ github.event.inputs.bp_admin_user }}" \
+            -var="bp_admin_pass=${{ github.event.inputs.bp_admin_pass }}" \
+            -var="bucket_name=${{ github.event.inputs.bucket_name }}" \
+            -var="credentials_file=$(pwd)/gcp-key.json"
