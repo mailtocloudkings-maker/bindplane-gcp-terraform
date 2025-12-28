@@ -35,7 +35,6 @@ jobs:
   terraform:
     name: Deploy BindPlane Infrastructure
     runs-on: ubuntu-latest
-    continue-on-error: false
 
     steps:
       - name: Checkout Repository
@@ -52,6 +51,7 @@ jobs:
         run: |
           echo "$GCP_KEY" > gcp-key.json
           chmod 600 gcp-key.json
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/gcp-key.json" >> $GITHUB_ENV
 
       - name: Terraform Init
         run: terraform init -reconfigure
@@ -68,4 +68,4 @@ jobs:
             -var="bp_admin_user=${{ github.event.inputs.bp_admin_user }}" \
             -var="bp_admin_pass=${{ github.event.inputs.bp_admin_pass }}" \
             -var="bucket_name=${{ github.event.inputs.bucket_name }}" \
-            -var="credentials_file=gcp-key.json"
+            -var="credentials_file=$(pwd)/gcp-key.json"
