@@ -27,34 +27,46 @@ resource "google_compute_instance" "bindplane_vm" {
     access_config {}
   }
 
-  metadata_startup_script = <<-EOF
-    #!/bin/bash
-    set -x
-    echo "Updating system packages..."
-    sudo apt update && sudo apt upgrade -y
+  metadata_startup_script = <<EOF
+#!/bin/bash
+exec > /var/log/bindplane-install.log 2>&1
+set -e
 
-    echo "Installing PostgreSQL..."
-    sudo apt install -y postgresql postgresql-contrib curl
-    sudo systemctl start postgresql
-    sudo systemctl enable postgresql
+echo "=== Updating OS ==="
+apt update -y
 
-    echo "Creating database and user..."
-    sudo -u postgres psql -c "CREATE DATABASE bindplane;"
-    sudo -u postgres psql -c "CREATE USER ${var.db_user} WITH PASSWORD '${var.db_pass}';"
-    sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE bindplane TO ${var.db_user};"
-    sudo -u postgres psql -c "ALTER SCHEMA public OWNER TO ${var.db_user};"
+echo "=== Installing PostgreSQL ==="
+apt install -y postgresql postgresql-contrib curl
 
-    echo "Installing BindPlane Server..."
-    curl -fsSL https://storage.googleapis.com/bindplane-op-releases/bindplane/latest/install-linux.sh -o install-linux.sh
-    bash install-linux.sh --version 1.96.7 --init --accept-license --no-prompt --admin-user ${var.bp_admin_user} --admin-password ${var.bp_admin_pass}
-    rm install-linux.sh
-    sudo systemctl enable bindplane
-    sudo systemctl start bindplane
+systemctl start postgresql
+systemctl enable postgresql
 
-    echo "Installing BindPlane Agent..."
-    curl -fsSL https://packages.bindplane.com/agent/install.sh | sudo bash
-    sudo systemctl start bindplane-agent
+echo "=== Creating BindPlane Database ==="
+sudo -u postgres psql <<DBSQL
+CREATE DATABASE bindplane;
+CREATE USER ${var.db_user} WITH PASSWORD '${var.db_pass}';
+GRANT ALL PRIVILEGES ON DATABASE bindplane TO ${var.db_user};
+ALTER SCHEMA public OWNER TO ${var.db_user};
+DBSQL
 
-    echo "VM setup completed successfully!"
-  EOF
+echo "=== Installing BindPlane Server ==="
+curl -fsSL https://storage.googleapis.com/bindplane-op-releases/bindplane/latest/install-linux.sh -o install.sh
+chmod +x install.sh
+
+./install.sh --version 1.96.7 <<BPSQL
+${var.bp_admin_user}
+${var.bp_admin_pass}
+${var.bp_admin_pass}
+BPSQL
+
+systemctl enable bindplane
+systemctl start bindplane
+
+echo "=== Installing BindPlane Agent ==="
+curl -fsSL https://packages.bindplane.com/agent/install.sh | bash
+systemctl enable bindplane-agent
+systemctl start bindplane-agent
+
+echo "=== DONE ==="
+EOF
 }
