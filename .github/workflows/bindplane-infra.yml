@@ -55,6 +55,11 @@ jobs:
 
       - name: Terraform Init
         run: terraform init -reconfigure
+      - name: Terraform Import Existing Resources
+        run: |
+          terraform import google_compute_instance.bindplane_vm projects/${{ github.event.inputs.project_id }}/zones/${{ github.event.inputs.zone }}/instances/${{ github.event.inputs.vm_name }} || true
+          terraform import google_compute_firewall.bindplane_ui ${{ github.event.inputs.vm_name }}-bindplane-ui || true
+          terraform import google_storage_bucket.bindplane_logs ${{ github.event.inputs.bucket_name }} || true
 
       - name: Terraform Apply
         run: |
