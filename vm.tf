@@ -55,7 +55,7 @@ resource "google_compute_instance" "bindplane_vm" {
   tags = ["bindplane", "ssh", "http"]
 }
 
-# Remote-exec to setup PostgreSQL and BindPlane
+# Upload and execute setup_bindplane.sh script
 resource "null_resource" "vm_setup" {
   depends_on = [google_compute_instance.bindplane_vm]
 
@@ -64,52 +64,28 @@ resource "null_resource" "vm_setup" {
     host        = google_compute_instance.bindplane_vm.network_interface[0].access_config[0].nat_ip
     user        = "ubuntu"
     private_key = tls_private_key.vm_key.private_key_pem
-    timeout     = "20m"
+    timeout     = "30m"
   }
 
+  # Copy the script to the VM
+  provisioner "file" {
+    source      = "setup_bindplane.sh"
+    destination = "/home/ubuntu/setup_bindplane.sh"
+  }
+
+  # Execute the script remotely
   provisioner "remote-exec" {
+    environment = {
+      DB_USER       = var.db_user
+      DB_PASS       = var.db_pass
+      BP_ADMIN_USER = var.bp_admin_user
+      BP_ADMIN_PASS = var.bp_admin_pass
+    }
+
     inline = [
-      "set -x",
-
-      # Update system packages
-      "echo 'Updating system packages...'",
-      "sudo apt update && sudo apt upgrade -y",
-
-      # Install PostgreSQL 14 (works on Ubuntu 22.04)
-      "echo 'Installing PostgreSQL 14 and required tools...'",
-      "sudo apt install -y postgresql-14 postgresql-client-14 curl",
-
-      # Start PostgreSQL
-      "echo 'Starting PostgreSQL service...'",
-      "sudo systemctl enable postgresql",
-      "sudo systemctl start postgresql",
-
-      # Create database and user
-      "echo 'Creating database and user...'",
-      "sudo -i -u postgres psql <<EOF",
-      "CREATE DATABASE bindplane;",
-      "CREATE USER ${var.db_user} WITH PASSWORD '${var.db_pass}';",
-      "GRANT ALL PRIVILEGES ON DATABASE bindplane TO ${var.db_user};",
-      "\\c bindplane",
-      "GRANT USAGE, CREATE ON SCHEMA public TO ${var.db_user};",
-      "ALTER SCHEMA public OWNER TO ${var.db_user};",
-      "\\q",
-      "EOF",
-
-      # BindPlane Server install
-      "echo 'Installing BindPlane Server...'",
-      "curl -fsSL https://storage.googleapis.com/bindplane-op-releases/bindplane/latest/install-linux.sh -o install-linux.sh",
-      "bash install-linux.sh --version 1.96.7 --init",
-      "rm install-linux.sh",
-      "sudo systemctl enable bindplane",
-      "sudo systemctl start bindplane",
-
-      # BindPlane Agent install
-      "echo 'Installing BindPlane Agent...'",
-      "curl -fsSL https://packages.bindplane.com/agent/install.sh | sudo bash",
-      "sudo systemctl start bindplane-agent",
-
-      "echo 'VM setup completed successfully!'"
+      "chmod +x /home/ubuntu/setup_bindplane.sh",
+      "echo 'Starting VM setup via setup_bindplane.sh...'",
+      "sudo /home/ubuntu/setup_bindplane.sh"
     ]
   }
 }
