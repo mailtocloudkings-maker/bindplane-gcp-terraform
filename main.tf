@@ -1,4 +1,9 @@
 terraform {
+  backend "gcs" {
+    bucket  = "bindplane-tf-state-bucket"
+    prefix  = "bindplane/terraform"
+  }
+
   required_providers {
     google = {
       source  = "hashicorp/google"
