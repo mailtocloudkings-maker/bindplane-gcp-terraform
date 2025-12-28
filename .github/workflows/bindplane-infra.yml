@@ -4,36 +4,49 @@ on:
   workflow_dispatch:
     inputs:
       project_id:
+        description: "GCP Project ID"
         required: true
       region:
+        description: "GCP Region"
         default: us-central1
       zone:
+        description: "GCP Zone"
         default: us-central1-a
       vm_name:
+        description: "BindPlane VM Name"
         required: true
       db_user:
+        description: "PostgreSQL Username"
         required: true
       db_pass:
+        description: "PostgreSQL Password"
         required: true
       bp_admin_user:
+        description: "BindPlane Admin Username"
         required: true
       bp_admin_pass:
+        description: "BindPlane Admin Password"
         required: true
       bucket_name:
+        description: "GCS Bucket Name"
         required: true
 
 jobs:
   terraform:
+    name: Deploy BindPlane Infrastructure
     runs-on: ubuntu-latest
+    continue-on-error: false
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout Repository
+        uses: actions/checkout@v3
 
-      - uses: hashicorp/setup-terraform@v3
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.6.5
 
-      - name: Configure GCP Credentials
+      - name: Write GCP Service Account Key
         env:
           GCP_KEY: ${{ secrets.GCP_SA_KEY }}
         run: |
@@ -44,16 +57,6 @@ jobs:
       - name: Terraform Init
         run: terraform init -reconfigure
 
-      - name: Auto Remove Terraform State Lock
-        run: |
-          LOCK=$(gsutil ls gs://bindplane-tf-state-bucket/bindplane/terraform/default.tflock 2>/dev/null || true)
-          if [ ! -z "$LOCK" ]; then
-            echo "Stale lock detected — removing"
-            gsutil rm gs://bindplane-tf-state-bucket/bindplane/terraform/default.tflock
-          else
-            echo "No stale lock"
-          fi
-
       - name: Import Existing Resources
         run: |
           terraform import google_compute_instance.bindplane_vm projects/${{ github.event.inputs.project_id }}/zones/${{ github.event.inputs.zone }}/instances/${{ github.event.inputs.vm_name }} || true
@@ -62,8 +65,7 @@ jobs:
 
       - name: Terraform Apply
         run: |
-          terraform apply -auto-approve \
-            -lock=false \
+          terraform apply -auto-approve -lock=false \
             -var="project_id=${{ github.event.inputs.project_id }}" \
             -var="region=${{ github.event.inputs.region }}" \
             -var="zone=${{ github.event.inputs.zone }}" \
