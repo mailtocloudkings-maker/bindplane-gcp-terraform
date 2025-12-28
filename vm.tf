@@ -1,15 +1,3 @@
-terraform {
-  required_providers {
-    google = {
-      source  = "hashicorp/google"
-      version = "~> 5.0"
-    }
-    tls = {
-      source  = "hashicorp/tls"
-      version = "~> 4.0"
-    }
-  }
-}
 
 # Generate SSH key for VM access
 resource "tls_private_key" "vm_key" {
