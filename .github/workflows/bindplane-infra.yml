@@ -4,48 +4,36 @@ on:
   workflow_dispatch:
     inputs:
       project_id:
-        description: "GCP Project ID"
         required: true
       region:
-        description: "GCP Region"
         default: us-central1
       zone:
-        description: "GCP Zone"
         default: us-central1-a
       vm_name:
-        description: "BindPlane VM Name"
         required: true
       db_user:
-        description: "PostgreSQL Username"
         required: true
       db_pass:
-        description: "PostgreSQL Password"
         required: true
       bp_admin_user:
-        description: "BindPlane Admin Username"
         required: true
       bp_admin_pass:
-        description: "BindPlane Admin Password"
         required: true
       bucket_name:
-        description: "GCS Bucket Name"
         required: true
 
 jobs:
   terraform:
-    name: Deploy BindPlane Infrastructure
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.6.5
 
-      - name: Write GCP Service Account Key
+      - name: Configure GCP Credentials
         env:
           GCP_KEY: ${{ secrets.GCP_SA_KEY }}
         run: |
@@ -56,51 +44,26 @@ jobs:
       - name: Terraform Init
         run: terraform init -reconfigure
 
-      # 🔥 CRITICAL: Import existing infra safely
-      - name: Terraform Import Existing Resources
+      - name: Auto Remove Terraform State Lock
         run: |
-          terraform import \
-            -var="project_id=${{ github.event.inputs.project_id }}" \
-            -var="region=${{ github.event.inputs.region }}" \
-            -var="zone=${{ github.event.inputs.zone }}" \
-            -var="vm_name=${{ github.event.inputs.vm_name }}" \
-            -var="db_user=${{ github.event.inputs.db_user }}" \
-            -var="db_pass=${{ github.event.inputs.db_pass }}" \
-            -var="bp_admin_user=${{ github.event.inputs.bp_admin_user }}" \
-            -var="bp_admin_pass=${{ github.event.inputs.bp_admin_pass }}" \
-            -var="bucket_name=${{ github.event.inputs.bucket_name }}" \
-            -var="credentials_file=$(pwd)/gcp-key.json" \
-            google_compute_instance.bindplane_vm projects/${{ github.event.inputs.project_id }}/zones/${{ github.event.inputs.zone }}/instances/${{ github.event.inputs.vm_name }} || true
+          LOCK=$(gsutil ls gs://bindplane-tf-state-bucket/bindplane/terraform/default.tflock 2>/dev/null || true)
+          if [ ! -z "$LOCK" ]; then
+            echo "Stale lock detected — removing"
+            gsutil rm gs://bindplane-tf-state-bucket/bindplane/terraform/default.tflock
+          else
+            echo "No stale lock"
+          fi
 
-          terraform import \
-            -var="project_id=${{ github.event.inputs.project_id }}" \
-            -var="region=${{ github.event.inputs.region }}" \
-            -var="zone=${{ github.event.inputs.zone }}" \
-            -var="vm_name=${{ github.event.inputs.vm_name }}" \
-            -var="db_user=${{ github.event.inputs.db_user }}" \
-            -var="db_pass=${{ github.event.inputs.db_pass }}" \
-            -var="bp_admin_user=${{ github.event.inputs.bp_admin_user }}" \
-            -var="bp_admin_pass=${{ github.event.inputs.bp_admin_pass }}" \
-            -var="bucket_name=${{ github.event.inputs.bucket_name }}" \
-            -var="credentials_file=$(pwd)/gcp-key.json" \
-            google_compute_firewall.bindplane_ui ${{ github.event.inputs.vm_name }}-bindplane-ui || true
-
-          terraform import \
-            -var="project_id=${{ github.event.inputs.project_id }}" \
-            -var="region=${{ github.event.inputs.region }}" \
-            -var="zone=${{ github.event.inputs.zone }}" \
-            -var="vm_name=${{ github.event.inputs.vm_name }}" \
-            -var="db_user=${{ github.event.inputs.db_user }}" \
-            -var="db_pass=${{ github.event.inputs.db_pass }}" \
-            -var="bp_admin_user=${{ github.event.inputs.bp_admin_user }}" \
-            -var="bp_admin_pass=${{ github.event.inputs.bp_admin_pass }}" \
-            -var="bucket_name=${{ github.event.inputs.bucket_name }}" \
-            -var="credentials_file=$(pwd)/gcp-key.json" \
-            google_storage_bucket.bindplane_logs ${{ github.event.inputs.bucket_name }} || true
+      - name: Import Existing Resources
+        run: |
+          terraform import google_compute_instance.bindplane_vm projects/${{ github.event.inputs.project_id }}/zones/${{ github.event.inputs.zone }}/instances/${{ github.event.inputs.vm_name }} || true
+          terraform import google_compute_firewall.bindplane_ui ${{ github.event.inputs.vm_name }}-bindplane-ui || true
+          terraform import google_storage_bucket.bindplane_logs ${{ github.event.inputs.bucket_name }} || true
 
       - name: Terraform Apply
         run: |
           terraform apply -auto-approve \
+            -lock=false \
             -var="project_id=${{ github.event.inputs.project_id }}" \
             -var="region=${{ github.event.inputs.region }}" \
             -var="zone=${{ github.event.inputs.zone }}" \
