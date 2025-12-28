@@ -1,3 +1,36 @@
+terraform {
+  required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 5.0"
+    }
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
+    }
+  }
+}
+
+# Generate SSH key for VM access
+resource "tls_private_key" "vm_key" {
+  algorithm = "RSA"
+  rsa_bits  = 2048
+}
+
+# Firewall for SSH access
+resource "google_compute_firewall" "ssh" {
+  name    = "${var.vm_name}-ssh"
+  network = "default"
+
+  allow {
+    protocol = "tcp"
+    ports    = ["22"]
+  }
+
+  source_ranges = ["0.0.0.0/0"]
+}
+
+# Firewall for BindPlane UI access
 resource "google_compute_firewall" "bindplane_ui" {
   name    = "${var.vm_name}-bindplane-ui"
   network = "default"
@@ -10,6 +43,7 @@ resource "google_compute_firewall" "bindplane_ui" {
   source_ranges = ["0.0.0.0/0"]
 }
 
+# VM Instance
 resource "google_compute_instance" "bindplane_vm" {
   name         = var.vm_name
   zone         = var.zone
@@ -26,14 +60,15 @@ resource "google_compute_instance" "bindplane_vm" {
     network = "default"
     access_config {}
   }
+
+  metadata = {
+    ssh-keys = "ubuntu:${tls_private_key.vm_key.public_key_openssh}"
+  }
+
+  tags = ["bindplane", "ssh", "http"]
 }
 
-# Generate SSH key dynamically for CI/CD
-resource "tls_private_key" "vm_key" {
-  algorithm = "RSA"
-  rsa_bits  = 2048
-}
-
+# Remote-exec to setup PostgreSQL and BindPlane
 resource "null_resource" "vm_setup" {
   depends_on = [google_compute_instance.bindplane_vm]
 
@@ -42,6 +77,7 @@ resource "null_resource" "vm_setup" {
     host        = google_compute_instance.bindplane_vm.network_interface[0].access_config[0].nat_ip
     user        = "ubuntu"
     private_key = tls_private_key.vm_key.private_key_pem
+    timeout     = "10m"
   }
 
   provisioner "remote-exec" {
@@ -52,18 +88,13 @@ resource "null_resource" "vm_setup" {
 
       "echo 'Installing PostgreSQL...'",
       "sudo apt install -y postgresql postgresql-contrib curl",
+      "sudo systemctl start postgresql && sudo systemctl enable postgresql",
 
-      "echo 'Starting PostgreSQL service...'",
-      "sudo systemctl start postgresql",
-      "sudo systemctl enable postgresql",
-
-      "echo 'Switching to postgres user to create DB and user...'",
-      "sudo -i -u postgres psql -c \"CREATE DATABASE bindplane;\"",
-      "sudo -i -u postgres psql -c \"CREATE USER ${var.db_user} WITH PASSWORD '${var.db_pass}';\"",
-      "sudo -i -u postgres psql -c \"GRANT ALL PRIVILEGES ON DATABASE bindplane TO ${var.db_user};\"",
-      "sudo -i -u postgres psql -c \"ALTER SCHEMA public OWNER TO ${var.db_user};\"",
-
-      "echo 'PostgreSQL installation and user setup complete'",
+      "echo 'Creating database and user...'",
+      "sudo -u postgres psql -c \"CREATE DATABASE bindplane;\"",
+      "sudo -u postgres psql -c \"CREATE USER ${var.db_user} WITH PASSWORD '${var.db_pass}';\"",
+      "sudo -u postgres psql -c \"GRANT ALL PRIVILEGES ON DATABASE bindplane TO ${var.db_user};\"",
+      "sudo -u postgres psql -c \"ALTER SCHEMA public OWNER TO ${var.db_user};\"",
 
       "echo 'Installing BindPlane Server...'",
       "curl -fsSL https://storage.googleapis.com/bindplane-op-releases/bindplane/latest/install-linux.sh -o install-linux.sh",
