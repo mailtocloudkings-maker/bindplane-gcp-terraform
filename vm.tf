@@ -8,6 +8,9 @@ resource "google_compute_firewall" "bindplane_ui" {
   }
 
   source_ranges = ["0.0.0.0/0"]
+  lifecycle {
+    ignore_changes = [name] # Skip if already exists
+  }
 }
 
 resource "google_compute_instance" "bindplane_vm" {
@@ -27,46 +30,49 @@ resource "google_compute_instance" "bindplane_vm" {
     access_config {}
   }
 
-  metadata_startup_script = <<EOF
-#!/bin/bash
-exec > /var/log/bindplane-install.log 2>&1
-set -e
+  lifecycle {
+    ignore_changes = [name] # Skip if already exists
+  }
+}
 
-echo "=== Updating OS ==="
-apt update -y
+resource "null_resource" "vm_setup" {
+  depends_on = [google_compute_instance.bindplane_vm]
 
-echo "=== Installing PostgreSQL ==="
-apt install -y postgresql postgresql-contrib curl
+  connection {
+    type        = "ssh"
+    host        = google_compute_instance.bindplane_vm.network_interface[0].access_config[0].nat_ip
+    user        = "ubuntu"
+    # Using GitHub Action generated key or secret
+    private_key = file("gcp-key-ssh") 
+  }
 
-systemctl start postgresql
-systemctl enable postgresql
+  provisioner "remote-exec" {
+    inline = [
+      "set -x",
+      "echo 'Updating system packages...'",
+      "sudo apt update && sudo apt upgrade -y",
 
-echo "=== Creating BindPlane Database ==="
-sudo -u postgres psql <<DBSQL
-CREATE DATABASE bindplane;
-CREATE USER ${var.db_user} WITH PASSWORD '${var.db_pass}';
-GRANT ALL PRIVILEGES ON DATABASE bindplane TO ${var.db_user};
-ALTER SCHEMA public OWNER TO ${var.db_user};
-DBSQL
+      "echo 'Installing PostgreSQL...'",
+      "sudo apt install -y postgresql postgresql-contrib curl",
+      "sudo systemctl start postgresql && sudo systemctl enable postgresql",
 
-echo "=== Installing BindPlane Server ==="
-curl -fsSL https://storage.googleapis.com/bindplane-op-releases/bindplane/latest/install-linux.sh -o install.sh
-chmod +x install.sh
+      "echo 'Creating database and user...'",
+      "sudo -u postgres psql -c \"CREATE DATABASE bindplane;\" || true",
+      "sudo -u postgres psql -c \"CREATE USER ${var.db_user} WITH PASSWORD '${var.db_pass}';\" || true",
+      "sudo -u postgres psql -c \"GRANT ALL PRIVILEGES ON DATABASE bindplane TO ${var.db_user};\" || true",
+      "sudo -u postgres psql -c \"ALTER SCHEMA public OWNER TO ${var.db_user};\" || true",
 
-./install.sh --version 1.96.7 <<BPSQL
-${var.bp_admin_user}
-${var.bp_admin_pass}
-${var.bp_admin_pass}
-BPSQL
+      "echo 'Installing BindPlane Server...'",
+      "curl -fsSL https://storage.googleapis.com/bindplane-op-releases/bindplane/latest/install-linux.sh -o install-linux.sh",
+      "bash install-linux.sh --version 1.96.7 --init --accept-license --no-prompt --admin-user ${var.bp_admin_user} --admin-password ${var.bp_admin_pass}",
+      "rm install-linux.sh",
+      "sudo systemctl enable bindplane && sudo systemctl start bindplane",
 
-systemctl enable bindplane
-systemctl start bindplane
+      "echo 'Installing BindPlane Agent...'",
+      "curl -fsSL https://packages.bindplane.com/agent/install.sh | sudo bash",
+      "sudo systemctl start bindplane-agent",
 
-echo "=== Installing BindPlane Agent ==="
-curl -fsSL https://packages.bindplane.com/agent/install.sh | bash
-systemctl enable bindplane-agent
-systemctl start bindplane-agent
-
-echo "=== DONE ==="
-EOF
+      "echo 'VM setup completed successfully!'"
+    ]
+  }
 }
