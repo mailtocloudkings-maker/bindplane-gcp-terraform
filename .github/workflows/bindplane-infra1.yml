@@ -54,7 +54,7 @@ jobs:
           chmod 600 gcp-key.json
 
       - name: Terraform Init
-        run: terraform init
+        run: terraform init -reconfigure
 
       - name: Terraform Apply
         run: |
