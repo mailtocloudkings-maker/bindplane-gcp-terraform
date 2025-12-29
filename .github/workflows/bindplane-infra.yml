@@ -35,7 +35,6 @@ jobs:
   terraform:
     name: Deploy BindPlane Infrastructure
     runs-on: ubuntu-latest
-    continue-on-error: false
 
     steps:
       - name: Checkout Repository
@@ -46,16 +45,23 @@ jobs:
         with:
           terraform_version: 1.6.5
 
-      - name: Write GCP Service Account Key
+      - name: Authenticate to GCP
         env:
           GCP_KEY: ${{ secrets.GCP_SA_KEY }}
         run: |
           echo "$GCP_KEY" > gcp-key.json
           chmod 600 gcp-key.json
           echo "GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/gcp-key.json" >> $GITHUB_ENV
+          gcloud auth activate-service-account --key-file=gcp-key.json
+          gcloud config set project ${{ github.event.inputs.project_id }}
 
       - name: Terraform Init
         run: terraform init -reconfigure
+
+      - name: Force Unlock Stale Terraform Lock
+        run: |
+          echo "Checking for stale Terraform state locks..."
+          gsutil rm gs://bindplane-tf-state-bucket/bindplane/terraform/*.tflock || true
 
       - name: Import Existing Resources
         run: |
@@ -65,7 +71,7 @@ jobs:
 
       - name: Terraform Apply
         run: |
-          terraform apply -auto-approve -lock=false \
+          terraform apply -auto-approve \
             -var="project_id=${{ github.event.inputs.project_id }}" \
             -var="region=${{ github.event.inputs.region }}" \
             -var="zone=${{ github.event.inputs.zone }}" \
