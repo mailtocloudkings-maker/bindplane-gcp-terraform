@@ -1,14 +1,8 @@
-#############################
-# SSH KEY
-#############################
 resource "tls_private_key" "vm_key" {
   algorithm = "RSA"
   rsa_bits  = 2048
 }
 
-#############################
-# FIREWALLS
-#############################
 resource "google_compute_firewall" "ssh" {
   name    = "${var.vm_name}-ssh"
   network = "default"
@@ -31,9 +25,6 @@ resource "google_compute_firewall" "bindplane_ui" {
   source_ranges = ["0.0.0.0/0"]
 }
 
-#############################
-# VM INSTANCE
-#############################
 resource "google_compute_instance" "bindplane_vm" {
   name         = var.vm_name
   zone         = var.zone
@@ -58,9 +49,6 @@ resource "google_compute_instance" "bindplane_vm" {
   tags = ["bindplane", "ssh", "http"]
 }
 
-#############################
-# PROVISION
-#############################
 resource "null_resource" "vm_setup" {
   depends_on = [google_compute_instance.bindplane_vm]
 
@@ -69,7 +57,7 @@ resource "null_resource" "vm_setup" {
     host        = google_compute_instance.bindplane_vm.network_interface[0].access_config[0].nat_ip
     user        = "ubuntu"
     private_key = tls_private_key.vm_key.private_key_pem
-    timeout     = "45m"
+    timeout     = "60m"
   }
 
   provisioner "file" {
@@ -79,14 +67,18 @@ resource "null_resource" "vm_setup" {
 
   provisioner "remote-exec" {
     inline = [
-      "echo 'DB_USER=${var.db_user}' | sudo tee /etc/bindplane.env",
-      "echo 'DB_PASS=${var.db_pass}' | sudo tee -a /etc/bindplane.env",
-      "echo 'BP_ADMIN_USER=${var.bp_admin_user}' | sudo tee -a /etc/bindplane.env",
-      "echo 'BP_ADMIN_PASS=${var.bp_admin_pass}' | sudo tee -a /etc/bindplane.env",
+      "set -euxo pipefail",
+
+      "echo DB_USER=${var.db_user} | sudo tee /etc/bindplane.env",
+      "echo DB_PASS='${var.db_pass}' | sudo tee -a /etc/bindplane.env",
+      "echo BP_ADMIN_USER=${var.bp_admin_user} | sudo tee -a /etc/bindplane.env",
+      "echo BP_ADMIN_PASS='${var.bp_admin_pass}' | sudo tee -a /etc/bindplane.env",
 
       "sudo chmod 600 /etc/bindplane.env",
       "sudo chmod +x /home/ubuntu/setup_bindplane.sh",
-      "sudo /bin/bash -c 'set -a && source /etc/bindplane.env && /home/ubuntu/setup_bindplane.sh'"
+
+      # 🔥 Live streaming logs to GitHub Actions
+      "sudo -E stdbuf -oL -eL bash -c 'source /etc/bindplane.env && /home/ubuntu/setup_bindplane.sh 2>&1 | tee /var/log/bindplane-install.log'"
     ]
   }
 }
