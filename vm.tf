@@ -1,10 +1,14 @@
-# Generate SSH key for VM access
+#############################
+# SSH KEY GENERATION
+#############################
 resource "tls_private_key" "vm_key" {
   algorithm = "RSA"
   rsa_bits  = 2048
 }
 
-# Firewall for SSH access
+#############################
+# FIREWALL - SSH
+#############################
 resource "google_compute_firewall" "ssh" {
   name    = "${var.vm_name}-ssh"
   network = "default"
@@ -17,7 +21,9 @@ resource "google_compute_firewall" "ssh" {
   source_ranges = ["0.0.0.0/0"]
 }
 
-# Firewall for BindPlane UI access
+#############################
+# FIREWALL - BINDPLANE UI
+#############################
 resource "google_compute_firewall" "bindplane_ui" {
   name    = "${var.vm_name}-bindplane-ui"
   network = "default"
@@ -30,7 +36,9 @@ resource "google_compute_firewall" "bindplane_ui" {
   source_ranges = ["0.0.0.0/0"]
 }
 
-# VM Instance
+#############################
+# VM INSTANCE
+#############################
 resource "google_compute_instance" "bindplane_vm" {
   name         = var.vm_name
   zone         = var.zone
@@ -55,7 +63,9 @@ resource "google_compute_instance" "bindplane_vm" {
   tags = ["bindplane", "ssh", "http"]
 }
 
-# Upload and execute setup_bindplane.sh script
+#############################
+# POST INSTALL PROVISIONING
+#############################
 resource "null_resource" "vm_setup" {
   depends_on = [google_compute_instance.bindplane_vm]
 
@@ -64,16 +74,16 @@ resource "null_resource" "vm_setup" {
     host        = google_compute_instance.bindplane_vm.network_interface[0].access_config[0].nat_ip
     user        = "ubuntu"
     private_key = tls_private_key.vm_key.private_key_pem
-    timeout     = "30m"
+    timeout     = "40m"
   }
 
-  # Copy the script to the VM
+  # Upload setup script
   provisioner "file" {
     source      = "setup_bindplane.sh"
     destination = "/home/ubuntu/setup_bindplane.sh"
   }
 
-  # Execute the script remotely
+  # Execute script with env vars
   provisioner "remote-exec" {
     environment = {
       DB_USER       = var.db_user
@@ -84,8 +94,9 @@ resource "null_resource" "vm_setup" {
 
     inline = [
       "chmod +x /home/ubuntu/setup_bindplane.sh",
-      "echo 'Starting VM setup via setup_bindplane.sh...'",
-      "sudo /home/ubuntu/setup_bindplane.sh"
+      "echo '===== STARTING BINDPLANE INSTALLATION ====='",
+      "sudo /home/ubuntu/setup_bindplane.sh",
+      "echo '===== INSTALLATION FINISHED ====='"
     ]
   }
 }
