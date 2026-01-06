@@ -32,45 +32,34 @@ on:
         required: true
 
 jobs:
-  terraform:
-    name: Deploy BindPlane Infrastructure
+  deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 120
 
     steps:
-      # -------------------
-      # Checkout Repo
-      # -------------------
+      # Checkout repo
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # -------------------
       # Setup Terraform
-      # -------------------
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.6.6
 
-      # -------------------
       # Authenticate to GCP
-      # -------------------
       - name: Authenticate to GCP
         run: |
           echo '${{ secrets.GCP_SA_KEY }}' > gcp-key.json
           chmod 600 gcp-key.json
           echo "GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/gcp-key.json" >> $GITHUB_ENV
 
-      # -------------------
       # Terraform Init
-      # -------------------
       - name: Terraform Init
         run: terraform init -reconfigure
 
-      # -------------------
-      # Terraform Apply with Live Logs
-      # -------------------
-      - name: Terraform Apply (LIVE LOGS)
+      # Terraform Apply
+      - name: Terraform Apply
         run: |
           terraform apply -auto-approve \
             -var="project_id=${{ github.event.inputs.project_id }}" \
@@ -84,23 +73,20 @@ jobs:
             -var="bucket_name=${{ github.event.inputs.bucket_name }}" \
             -var="credentials_file=$(pwd)/gcp-key.json"
 
-      # -------------------
       # Gather Summary from VM
-      # -------------------
-      - name: Gather Summary from VM
+      - name: VM & Service Summary
         run: |
           VM_IP=$(terraform output -raw vm_external_ip)
           GCS_BUCKET=$(terraform output -raw gcs_bucket_name)
 
-          echo "===== CONNECTING TO VM TO CHECK SERVICES ====="
-          ssh -o StrictHostKeyChecking=no -i ./gcp-key.json ubuntu@$VM_IP << 'EOF'
-            echo "Checking PostgreSQL and BindPlane Server status..."
-            PG_STATUS=$(systemctl is-active postgresql || echo 'inactive')
-            BP_STATUS=$(systemctl is-active bindplane-server || echo 'inactive')
-            echo "PostgreSQL: $PG_STATUS"
-            echo "BindPlane Server: $BP_STATUS"
-EOF
-
-          echo "===== SUMMARY ====="
+          echo "===== VM & SERVICE SUMMARY ====="
           echo "VM External IP: $VM_IP"
           echo "GCS Bucket: $GCS_BUCKET"
+
+          echo "Checking PostgreSQL and BindPlane Server status on VM..."
+          ssh -o StrictHostKeyChecking=no -i ./gcp-key.json ubuntu@$VM_IP << 'EOF'
+            PG_STATUS=$(systemctl is-active postgresql || echo 'inactive')
+            BP_STATUS=$(systemctl is-active bindplane-server || echo 'inactive')
+            echo "PostgreSQL Status: $PG_STATUS"
+            echo "BindPlane Server Status: $BP_STATUS"
+EOF
