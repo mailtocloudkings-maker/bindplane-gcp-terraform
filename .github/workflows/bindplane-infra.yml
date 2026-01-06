@@ -33,7 +33,7 @@ on:
 
 jobs:
   terraform:
-    name: Deploy BindPlane Infrastructure
+    name: Deploy BindPlane Infra
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
@@ -69,14 +69,11 @@ jobs:
             -var="bucket_name=${{ github.event.inputs.bucket_name }}" \
             -var="credentials_file=$(pwd)/gcp-key.json"
 
-      - name: Terraform Output
-        id: output
-        run: terraform output
-
-      - name: Summary
+      - name: Show Outputs
         run: |
+          echo "============================"
           echo "✅ BindPlane infrastructure deployed successfully!"
-          echo "   - GCS Bucket: $(terraform output -raw gcs_bucket_name)"
-          echo "   - VM External IP: $(terraform output -raw vm_external_ip)"
-          echo "   - PostgreSQL User: ${{ github.event.inputs.db_user }}"
-          echo "   - BindPlane Admin: ${{ github.event.inputs.bp_admin_user }}"
+          echo "GCS Bucket: $(terraform output -raw gcs_bucket_name)"
+          echo "VM External IP: $(terraform output -raw vm_external_ip)"
+          echo "Check PostgreSQL and BindPlane services on VM logs above."
+          echo "============================"
