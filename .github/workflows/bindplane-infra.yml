@@ -55,9 +55,8 @@ jobs:
       - name: Terraform Init
         run: terraform init -reconfigure
 
-      - name: Terraform Apply (LIVE STREAMING)
+      - name: Terraform Apply
         run: |
-          export TF_LOG=TRACE
           terraform apply -auto-approve \
             -var="project_id=${{ github.event.inputs.project_id }}" \
             -var="region=${{ github.event.inputs.region }}" \
@@ -70,5 +69,14 @@ jobs:
             -var="bucket_name=${{ github.event.inputs.bucket_name }}" \
             -var="credentials_file=$(pwd)/gcp-key.json"
 
-      - name: Show Outputs
+      - name: Terraform Output
+        id: output
         run: terraform output
+
+      - name: Summary
+        run: |
+          echo "✅ BindPlane infrastructure deployed successfully!"
+          echo "   - GCS Bucket: $(terraform output -raw gcs_bucket_name)"
+          echo "   - VM External IP: $(terraform output -raw vm_external_ip)"
+          echo "   - PostgreSQL User: ${{ github.event.inputs.db_user }}"
+          echo "   - BindPlane Admin: ${{ github.event.inputs.bp_admin_user }}"
