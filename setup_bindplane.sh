@@ -1,56 +1,49 @@
 #!/bin/bash
 set -euxo pipefail
 
-echo "===== INSTALL START: $(date) ====="
+sudo apt-get update -y
+sudo apt-get install -y postgresql postgresql-contrib curl jq
 
-DB_USER=${DB_USER:-bindplane_user}
-DB_PASS=${DB_PASS:-StrongPassword@2025}
-BP_ADMIN_USER=${BP_ADMIN_USER:-admin}
-BP_ADMIN_PASS=${BP_ADMIN_PASS:-test}
+sudo systemctl enable postgresql
+sudo systemctl start postgresql
 
-echo "Updating OS..."
-apt update -y
+sudo -u postgres psql <<EOF
+DO \$\$ BEGIN
+IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '$DB_USER') THEN
+  CREATE ROLE $DB_USER LOGIN PASSWORD '$DB_PASS';
+END IF;
+END \$\$;
 
-echo "Installing PostgreSQL..."
-apt install -y postgresql postgresql-contrib curl
-
-systemctl enable postgresql
-systemctl start postgresql
-
-echo "Creating database and user..."
-sudo -i -u postgres psql <<EOF
-DO \$\$
-BEGIN
-   IF NOT EXISTS (SELECT FROM pg_database WHERE datname = 'bindplane') THEN
-      CREATE DATABASE bindplane;
-   END IF;
-END\$\$;
-
-DO \$\$
-BEGIN
-   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '$DB_USER') THEN
-      CREATE USER $DB_USER WITH PASSWORD '$DB_PASS';
-   END IF;
-END\$\$;
-
-GRANT ALL PRIVILEGES ON DATABASE bindplane TO $DB_USER;
-\c bindplane
-GRANT USAGE, CREATE ON SCHEMA public TO $DB_USER;
-ALTER SCHEMA public OWNER TO $DB_USER;
-\q
+DO \$\$ BEGIN
+IF NOT EXISTS (SELECT FROM pg_database WHERE datname = 'bindplane') THEN
+  CREATE DATABASE bindplane OWNER $DB_USER;
+END IF;
+END \$\$;
 EOF
 
-echo "Installing BindPlane Server..."
-curl -fsSL https://storage.googleapis.com/bindplane-op-releases/bindplane/latest/install-linux.sh -o install.sh
-bash install.sh --version 1.96.7 --init --accept-license --no-prompt \
- --admin-user $BP_ADMIN_USER --admin-password $BP_ADMIN_PASS
-rm install.sh
+curl -fsSL https://apt.bindplane.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/bindplane.gpg
+echo "deb [signed-by=/usr/share/keyrings/bindplane.gpg] https://apt.bindplane.com stable main" | sudo tee /etc/apt/sources.list.d/bindplane.list
 
-systemctl enable bindplane
-systemctl start bindplane
+sudo apt-get update -y
+sudo apt-get install -y bindplane-server bindplane-agent
 
-echo "Installing BindPlane Agent..."
-curl -fsSL https://packages.bindplane.com/agent/install.sh | bash
-systemctl start bindplane-agent
+sudo tee /etc/bindplane/config.yaml > /dev/null <<EOL
+database:
+  type: postgres
+  postgres:
+    host: localhost
+    port: 5432
+    user: $DB_USER
+    password: $DB_PASS
+    dbname: bindplane
+server:
+  listen: 0.0.0.0:3001
+EOL
 
-echo "===== INSTALL COMPLETE SUCCESSFULLY ====="
+sudo systemctl restart bindplane-server
+sudo systemctl start bindplane-agent
+
+sleep 20
+curl -X POST http://localhost:3001/api/v1/auth/bootstrap \
+ -H "Content-Type: application/json" \
+ -d "{\"email\":\"$BP_ADMIN_USER\",\"password\":\"$BP_ADMIN_PASS\"}"
