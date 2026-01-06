@@ -35,42 +35,29 @@ jobs:
   terraform:
     name: Deploy BindPlane Infrastructure
     runs-on: ubuntu-latest
+    timeout-minutes: 90
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.6.5
+          terraform_version: 1.6.6
 
       - name: Authenticate to GCP
-        env:
-          GCP_KEY: ${{ secrets.GCP_SA_KEY }}
         run: |
-          echo "$GCP_KEY" > gcp-key.json
+          echo '${{ secrets.GCP_SA_KEY }}' > gcp-key.json
           chmod 600 gcp-key.json
           echo "GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/gcp-key.json" >> $GITHUB_ENV
-          gcloud auth activate-service-account --key-file=gcp-key.json
-          gcloud config set project ${{ github.event.inputs.project_id }}
 
       - name: Terraform Init
         run: terraform init -reconfigure
 
-      - name: Force Unlock Stale Terraform Lock
+      - name: Terraform Apply (LIVE STREAMING)
         run: |
-          echo "Checking for stale Terraform state locks..."
-          gsutil rm gs://bindplane-tf-state-bucket/bindplane/terraform/*.tflock || true
-
-      - name: Import Existing Resources
-        run: |
-          terraform import google_compute_instance.bindplane_vm projects/${{ github.event.inputs.project_id }}/zones/${{ github.event.inputs.zone }}/instances/${{ github.event.inputs.vm_name }} || true
-          terraform import google_compute_firewall.bindplane_ui ${{ github.event.inputs.vm_name }}-bindplane-ui || true
-          terraform import google_storage_bucket.bindplane_logs ${{ github.event.inputs.bucket_name }} || true
-
-      - name: Terraform Apply
-        run: |
+          export TF_LOG=TRACE
           terraform apply -auto-approve \
             -var="project_id=${{ github.event.inputs.project_id }}" \
             -var="region=${{ github.event.inputs.region }}" \
@@ -82,3 +69,6 @@ jobs:
             -var="bp_admin_pass=${{ github.event.inputs.bp_admin_pass }}" \
             -var="bucket_name=${{ github.event.inputs.bucket_name }}" \
             -var="credentials_file=$(pwd)/gcp-key.json"
+
+      - name: Show Outputs
+        run: terraform output
