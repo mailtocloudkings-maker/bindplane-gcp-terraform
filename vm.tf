@@ -53,15 +53,36 @@ resource "google_compute_instance" "bindplane_vm" {
     ssh-keys = "ubuntu:${tls_private_key.vm_key.public_key_openssh}"
   }
 
-  # ------------------------------
-  # Startup script automates Postgres + BindPlane
-  # ------------------------------
-  metadata_startup_script = templatefile("${path.module}/setup_bindplane.sh", {
-    db_user       = var.db_user
-    db_pass       = var.db_pass
-    bp_admin_user = var.bp_admin_user
-    bp_admin_pass = var.bp_admin_pass
-  })
-
   tags = ["ssh", "bindplane"]
 }
+
+# -------- Install PostgreSQL + BindPlane --------
+resource "null_resource" "install_bindplane" {
+  depends_on = [google_compute_instance.bindplane_vm, google_storage_bucket.bindplane_logs]
+
+  connection {
+    type        = "ssh"
+    host        = google_compute_instance.bindplane_vm.network_interface[0].access_config[0].nat_ip
+    user        = "ubuntu"
+    private_key = tls_private_key.vm_key.private_key_pem
+    timeout     = "60m"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "set -euxo pipefail",
+
+      "echo '===== UPDATING SYSTEM ====='",
+      "sudo apt-get update -y",
+      "sudo apt-get install -y postgresql postgresql-contrib curl jq",
+
+      "echo '===== STARTING POSTGRESQL ====='",
+      "sudo systemctl enable postgresql",
+      "sudo systemctl start postgresql",
+
+      "echo '===== CREATING DATABASE AND USER ====='",
+      "sudo -u postgres psql -c \"DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${var.db_user}') THEN CREATE ROLE ${var.db_user} LOGIN PASSWORD '${var.db_pass}'; END IF; END \$\$;\"",
+      "sudo -u postgres psql -c \"DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_database WHERE datname = 'bindplane') THEN CREATE DATABASE bindplane OWNER ${var.db_user}; END IF; END \$\$;\"",
+
+      "echo '===== INSTALLING BINDPLANE SERVER ====='",
+      "curl -fsSL https://storage.googleapis.com/bindplane-op-releases/bindplane/latest/instal
