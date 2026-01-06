@@ -1,3 +1,4 @@
+# -------- TLS Key for SSH --------
 resource "tls_private_key" "vm_key" {
   algorithm = "RSA"
   rsa_bits  = 2048
@@ -58,7 +59,10 @@ resource "google_compute_instance" "bindplane_vm" {
 
 # -------- Install PostgreSQL + BindPlane --------
 resource "null_resource" "install_bindplane" {
-  depends_on = [google_compute_instance.bindplane_vm, google_storage_bucket.bindplane_logs]
+  depends_on = [
+    google_compute_instance.bindplane_vm,
+    google_storage_bucket.bindplane_logs
+  ]
 
   connection {
     type        = "ssh"
@@ -69,20 +73,37 @@ resource "null_resource" "install_bindplane" {
   }
 
   provisioner "remote-exec" {
-    inline = [
-      "set -euxo pipefail",
+    script = <<-EOT
+      set -euxo pipefail
 
-      "echo '===== UPDATING SYSTEM ====='",
-      "sudo apt-get update -y",
-      "sudo apt-get install -y postgresql postgresql-contrib curl jq",
+      echo "===== UPDATING SYSTEM ====="
+      sudo apt-get update -y
+      sudo apt-get install -y postgresql postgresql-contrib curl jq
 
-      "echo '===== STARTING POSTGRESQL ====='",
-      "sudo systemctl enable postgresql",
-      "sudo systemctl start postgresql",
+      echo "===== STARTING POSTGRESQL ====="
+      sudo systemctl enable postgresql
+      sudo systemctl start postgresql
 
-      "echo '===== CREATING DATABASE AND USER ====='",
-      "sudo -u postgres psql -c \"DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${var.db_user}') THEN CREATE ROLE ${var.db_user} LOGIN PASSWORD '${var.db_pass}'; END IF; END \$\$;\"",
-      "sudo -u postgres psql -c \"DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_database WHERE datname = 'bindplane') THEN CREATE DATABASE bindplane OWNER ${var.db_user}; END IF; END \$\$;\"",
+      echo "===== CREATING DATABASE AND USER ====="
+      sudo -u postgres psql -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${var.db_user}') THEN CREATE ROLE ${var.db_user} LOGIN PASSWORD '${var.db_pass}'; END IF; END \$\$;"
+      sudo -u postgres psql -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_database WHERE datname = 'bindplane') THEN CREATE DATABASE bindplane OWNER ${var.db_user}; END IF; END \$\$;"
 
-      "echo '===== INSTALLING BINDPLANE SERVER ====='",
-      "curl -fsSL https://storage.googleapis.com/bindplane-op-releases/bindplane/latest/instal
+      echo "===== INSTALLING BINDPLANE SERVER ====="
+      curl -fsSL https://storage.googleapis.com/bindplane-op-releases/bindplane/latest/install-linux.sh -o install-linux.sh
+      bash install-linux.sh --version 1.96.7 --init --accept-license --no-prompt --admin-user ${var.bp_admin_user} --admin-password ${var.bp_admin_pass}
+      rm install-linux.sh
+
+      echo "===== STARTING SERVICES ====="
+      sudo systemctl enable bindplane-server
+      sudo systemctl restart bindplane-server
+      sudo systemctl enable bindplane-agent
+      sudo systemctl restart bindplane-agent
+
+      echo "===== CHECKING SERVICES ====="
+      PG_STATUS=$(systemctl is-active postgresql || echo 'inactive')
+      BP_STATUS=$(systemctl is-active bindplane-server || echo 'inactive')
+      echo "PostgreSQL: $PG_STATUS"
+      echo "BindPlane: $BP_STATUS"
+    EOT
+  }
+}
