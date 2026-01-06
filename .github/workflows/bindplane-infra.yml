@@ -37,7 +37,7 @@ jobs:
     timeout-minutes: 120
 
     steps:
-      # Checkout repo
+      # Checkout the repository
       - name: Checkout Repository
         uses: actions/checkout@v4
 
@@ -73,7 +73,7 @@ jobs:
             -var="bucket_name=${{ github.event.inputs.bucket_name }}" \
             -var="credentials_file=$(pwd)/gcp-key.json"
 
-      # Show final outputs & check VM services
+      # Show outputs and check services on VM
       - name: Summary & Service Status
         run: |
           VM_IP=$(terraform output -raw vm_external_ip)
@@ -83,7 +83,7 @@ jobs:
           echo "VM External IP: $VM_IP"
           echo "GCS Bucket: $GCS_BUCKET"
 
-          echo "Checking PostgreSQL and BindPlane server status on VM..."
+          echo "===== CHECKING SERVICES ON VM ====="
           ssh -o StrictHostKeyChecking=no -i ./gcp-key.json ubuntu@$VM_IP << 'EOF'
             PG_STATUS=$(systemctl is-active postgresql || echo 'inactive')
             BP_STATUS=$(systemctl is-active bindplane-server || echo 'inactive')
