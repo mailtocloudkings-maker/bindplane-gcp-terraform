@@ -53,39 +53,15 @@ resource "google_compute_instance" "bindplane_vm" {
     ssh-keys = "ubuntu:${tls_private_key.vm_key.public_key_openssh}"
   }
 
+  # ------------------------------
+  # Startup script automates Postgres + BindPlane
+  # ------------------------------
+  metadata_startup_script = templatefile("${path.module}/setup_bindplane.sh", {
+    db_user       = var.db_user
+    db_pass       = var.db_pass
+    bp_admin_user = var.bp_admin_user
+    bp_admin_pass = var.bp_admin_pass
+  })
+
   tags = ["ssh", "bindplane"]
-}
-
-# -------- Remote Installation --------
-resource "null_resource" "vm_setup" {
-  depends_on = [google_compute_instance.bindplane_vm]
-
-  connection {
-    type        = "ssh"
-    host        = google_compute_instance.bindplane_vm.network_interface[0].access_config[0].nat_ip
-    user        = "ubuntu"
-    private_key = tls_private_key.vm_key.private_key_pem
-    timeout     = "60m"
-  }
-
-  provisioner "file" {
-    source      = "setup_bindplane.sh"
-    destination = "/home/ubuntu/setup_bindplane.sh"
-  }
-
-  provisioner "remote-exec" {
-    inline = [
-      "set -euxo pipefail",
-
-      "echo DB_USER=${var.db_user} | sudo tee /etc/bindplane.env",
-      "echo DB_PASS='${var.db_pass}' | sudo tee -a /etc/bindplane.env",
-      "echo BP_ADMIN_USER=${var.bp_admin_user} | sudo tee -a /etc/bindplane.env",
-      "echo BP_ADMIN_PASS='${var.bp_admin_pass}' | sudo tee -a /etc/bindplane.env",
-
-      "sudo chmod 600 /etc/bindplane.env",
-      "sudo chmod +x /home/ubuntu/setup_bindplane.sh",
-
-      "sudo -E bash -c 'source /etc/bindplane.env && /home/ubuntu/setup_bindplane.sh 2>&1 | tee /var/log/bindplane-install.log'"
-    ]
-  }
 }
