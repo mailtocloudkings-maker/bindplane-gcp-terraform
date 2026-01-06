@@ -73,17 +73,17 @@ jobs:
             -var="bucket_name=${{ github.event.inputs.bucket_name }}" \
             -var="credentials_file=$(pwd)/gcp-key.json"
 
-      # Gather Summary from VM
-      - name: VM & Service Summary
+      # Show final outputs & check VM services
+      - name: Summary & Service Status
         run: |
           VM_IP=$(terraform output -raw vm_external_ip)
           GCS_BUCKET=$(terraform output -raw gcs_bucket_name)
 
-          echo "===== VM & SERVICE SUMMARY ====="
+          echo "===== INFRA SUMMARY ====="
           echo "VM External IP: $VM_IP"
           echo "GCS Bucket: $GCS_BUCKET"
 
-          echo "Checking PostgreSQL and BindPlane Server status on VM..."
+          echo "Checking PostgreSQL and BindPlane server status on VM..."
           ssh -o StrictHostKeyChecking=no -i ./gcp-key.json ubuntu@$VM_IP << 'EOF'
             PG_STATUS=$(systemctl is-active postgresql || echo 'inactive')
             BP_STATUS=$(systemctl is-active bindplane-server || echo 'inactive')
