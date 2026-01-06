@@ -13,21 +13,21 @@ BP_ADMIN_PASS="${bp_admin_pass}"
 # Update OS and install prerequisites
 # ------------------------------
 echo "===== UPDATING SYSTEM ====="
-apt-get update -y
-apt-get install -y postgresql postgresql-contrib curl jq
+sudo apt-get update -y
+sudo apt-get install -y postgresql postgresql-contrib curl jq
 
 # ------------------------------
 # Start and enable PostgreSQL
 # ------------------------------
 echo "===== STARTING POSTGRESQL ====="
-systemctl enable postgresql
-systemctl start postgresql
+sudo systemctl enable postgresql
+sudo systemctl start postgresql
 
 # ------------------------------
 # Create Postgres user & database (idempotent)
 # ------------------------------
 echo "===== CONFIGURING DATABASE ====="
-sudo -u postgres psql <<EOF
+sudo -u postgres psql <<-EOSQL
 DO \$\$ BEGIN
    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '$DB_USER') THEN
       CREATE ROLE $DB_USER LOGIN PASSWORD '$DB_PASS';
@@ -39,7 +39,7 @@ DO \$\$ BEGIN
       CREATE DATABASE bindplane OWNER $DB_USER;
    END IF;
 END \$\$;
-EOF
+EOSQL
 
 # ------------------------------
 # Install BindPlane Server using official install script
@@ -51,12 +51,17 @@ bash install-linux.sh --version 1.96.7 --init --accept-license --no-prompt \
 rm install-linux.sh
 
 # Enable and start BindPlane services
-systemctl enable bindplane-server
-systemctl restart bindplane-server
-systemctl enable bindplane-agent
-systemctl restart bindplane-agent
+sudo systemctl enable bindplane-server
+sudo systemctl restart bindplane-server
+sudo systemctl enable bindplane-agent
+sudo systemctl restart bindplane-agent
 
 # ------------------------------
 # Confirm installation
 # ------------------------------
+PG_STATUS=$(systemctl is-active postgresql || echo 'inactive')
+BP_STATUS=$(systemctl is-active bindplane-server || echo 'inactive')
+
 echo "===== BINDPLANE INSTALL COMPLETE ====="
+echo "PostgreSQL Status: $PG_STATUS"
+echo "BindPlane Server Status: $BP_STATUS"
