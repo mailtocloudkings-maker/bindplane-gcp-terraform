@@ -33,7 +33,7 @@ on:
 
 jobs:
   terraform:
-    name: Deploy BindPlane Infra
+    name: Deploy BindPlane Infrastructure
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
@@ -55,7 +55,7 @@ jobs:
       - name: Terraform Init
         run: terraform init -reconfigure
 
-      - name: Terraform Apply
+      - name: Terraform Apply (LIVE LOGS)
         run: |
           terraform apply -auto-approve \
             -var="project_id=${{ github.event.inputs.project_id }}" \
@@ -69,11 +69,19 @@ jobs:
             -var="bucket_name=${{ github.event.inputs.bucket_name }}" \
             -var="credentials_file=$(pwd)/gcp-key.json"
 
-      - name: Show Outputs
+      - name: Gather Summary from VM
         run: |
-          echo "============================"
-          echo "✅ BindPlane infrastructure deployed successfully!"
-          echo "GCS Bucket: $(terraform output -raw gcs_bucket_name)"
-          echo "VM External IP: $(terraform output -raw vm_external_ip)"
-          echo "Check PostgreSQL and BindPlane services on VM logs above."
-          echo "============================"
+          VM_IP=$(terraform output -raw vm_external_ip)
+          GCS_BUCKET=$(terraform output -raw gcs_bucket_name)
+
+          echo "===== CONNECTING TO VM TO CHECK SERVICES ====="
+          ssh -o StrictHostKeyChecking=no -i ./gcp-key.json ubuntu@$VM_IP << 'EOF'
+            echo "Checking PostgreSQL and BindPlane Server status..."
+            PG_STATUS=$(systemctl is-active postgresql || echo 'inactive')
+            BP_STATUS=$(systemctl is-active bindplane-server || echo 'inactive')
+            echo "PostgreSQL: $PG_STATUS"
+            echo "BindPlane Server: $BP_STATUS"
+EOF
+          echo "===== SUMMARY ====="
+          echo "VM External IP: $VM_IP"
+          echo "GCS Bucket: $GCS_BUCKET"
