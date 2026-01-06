@@ -35,7 +35,7 @@ jobs:
   terraform:
     name: Deploy BindPlane Infra
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
 
     steps:
       - name: Checkout Repository
@@ -69,11 +69,26 @@ jobs:
             -var="bucket_name=${{ github.event.inputs.bucket_name }}" \
             -var="credentials_file=$(pwd)/gcp-key.json"
 
+      - name: Check VM Services
+        run: |
+          VM_IP=$(terraform output -raw vm_external_ip)
+          VM_KEY=$(terraform output -raw vm_private_key)
+          echo "$VM_KEY" > vm_key.pem
+          chmod 600 vm_key.pem
+
+          echo "===== CHECKING SERVICES ON VM ====="
+          ssh -o StrictHostKeyChecking=no -i vm_key.pem ubuntu@$VM_IP << 'EOF'
+            PG_STATUS=$(systemctl is-active postgresql || echo 'inactive')
+            BP_STATUS=$(systemctl is-active bindplane-server || echo 'inactive')
+            echo "PostgreSQL Status: $PG_STATUS"
+            echo "BindPlane Server Status: $BP_STATUS"
+EOF
+
       - name: Show Outputs
         run: |
           echo "============================"
           echo "✅ BindPlane infrastructure deployed successfully!"
           echo "GCS Bucket: $(terraform output -raw gcs_bucket_name)"
           echo "VM External IP: $(terraform output -raw vm_external_ip)"
-          echo "Check PostgreSQL and BindPlane services on VM logs above."
+          echo "PostgreSQL and BindPlane service status shown above."
           echo "============================"
