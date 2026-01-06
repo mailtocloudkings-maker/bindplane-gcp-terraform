@@ -3,24 +3,35 @@ resource "tls_private_key" "vm_key" {
   rsa_bits  = 2048
 }
 
+# -------- Firewall for SSH --------
 resource "google_compute_firewall" "ssh" {
-  name = "${var.vm_name}-ssh"
+  name    = "${var.vm_name}-ssh"
   network = "default"
 
-  allow { protocol = "tcp" ports = ["22"] }
+  allow {
+    protocol = "tcp"
+    ports    = ["22"]
+  }
+
   source_ranges = ["0.0.0.0/0"]
   target_tags   = ["ssh"]
 }
 
+# -------- Firewall for BindPlane UI --------
 resource "google_compute_firewall" "bindplane_ui" {
-  name = "${var.vm_name}-ui"
+  name    = "${var.vm_name}-ui"
   network = "default"
 
-  allow { protocol = "tcp" ports = ["3001"] }
+  allow {
+    protocol = "tcp"
+    ports    = ["3001"]
+  }
+
   source_ranges = ["0.0.0.0/0"]
   target_tags   = ["bindplane"]
 }
 
+# -------- BindPlane VM --------
 resource "google_compute_instance" "bindplane_vm" {
   name         = var.vm_name
   zone         = var.zone
@@ -45,6 +56,7 @@ resource "google_compute_instance" "bindplane_vm" {
   tags = ["ssh", "bindplane"]
 }
 
+# -------- Remote Installation --------
 resource "null_resource" "vm_setup" {
   depends_on = [google_compute_instance.bindplane_vm]
 
@@ -63,6 +75,8 @@ resource "null_resource" "vm_setup" {
 
   provisioner "remote-exec" {
     inline = [
+      "set -euxo pipefail",
+
       "echo DB_USER=${var.db_user} | sudo tee /etc/bindplane.env",
       "echo DB_PASS='${var.db_pass}' | sudo tee -a /etc/bindplane.env",
       "echo BP_ADMIN_USER=${var.bp_admin_user} | sudo tee -a /etc/bindplane.env",
@@ -70,6 +84,7 @@ resource "null_resource" "vm_setup" {
 
       "sudo chmod 600 /etc/bindplane.env",
       "sudo chmod +x /home/ubuntu/setup_bindplane.sh",
+
       "sudo -E bash -c 'source /etc/bindplane.env && /home/ubuntu/setup_bindplane.sh 2>&1 | tee /var/log/bindplane-install.log'"
     ]
   }
